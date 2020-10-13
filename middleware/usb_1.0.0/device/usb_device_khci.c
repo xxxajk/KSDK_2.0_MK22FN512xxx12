@@ -1201,21 +1201,19 @@ usb_status_t USB_DeviceKhciControl(usb_device_controller_handle khciHandle, usb_
             khciState->registerBase->CTL |= USB_CTL_RESUME_MASK;
 #if 1
         	// NXP's document is incorrect.
-        	// Should remain asserted at least 10ms but no more than 15ms.
-        	// Experiments in the wild suggest 12ms.
+        	// Condition should remain asserted at least 10ms but no more than 15ms.
+        	// Experiments in the wild suggest a 12ms average.
             // We have a hardware timer available for this.
-            // Providing global IRQ isn't disabled,
-            // and the NVIC priority is higher than USB, this will work.
-            // USB NVIC priority is 4
-            // PIT NVIC priority is 3
-            // This means that we can just disable USB IRQ. --AJK
-        	uint8_t interruptFlag = khciState->registerBase->INTEN;
-        	khciState->registerBase->INTEN &= ~(0xFFU);
+            // Providing global IRQs are not disabled, this can work.
+            // This means that we can just disable USB IRQs,
+            // do our delay, and restore the USB IRQs.
+            // --AJK
+        	uint8_t interruptFlag = khciState->registerBase->INTEN; // save USB IRQ flags
+        	khciState->registerBase->INTEN &= ~(0xFFU); // disable USB IRQ flags
             USB_OSA_EXIT_CRITICAL();
             Timer_Delay(12);
             USB_OSA_ENTER_CRITICAL();
-            khciState->registerBase->CTL &= ~USB_CTL_RESUME_MASK;
-            khciState->registerBase->INTEN = interruptFlag;
+            khciState->registerBase->INTEN = interruptFlag; // restore USB IRQ flags
 #else
 #if 1 // This is a hack and is not tuned in any way, but it works - note that we can not use a timer, as interrupts are disabled
             for (uint64_t i = MSEC_TO_COUNT(8, SystemCoreClock); i > 0U; i--)
@@ -1231,6 +1229,7 @@ usb_status_t USB_DeviceKhciControl(usb_device_controller_handle khciHandle, usb_
             }
 #endif
 #endif
+            khciState->registerBase->CTL &= ~USB_CTL_RESUME_MASK;
             USB_OSA_EXIT_CRITICAL();
             error = kStatus_USB_Success;
 #endif /* USB_DEVICE_CONFIG_REMOTE_WAKEUP */
